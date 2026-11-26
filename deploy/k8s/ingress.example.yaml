@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentplaza
+  labels:
+    app.kubernetes.io/part-of: agentplaza
+spec:
+  ingressClassName: example-ingress
+  tls:
+    - hosts:
+        - plaza.example.com
+      secretName: agentplaza-tls
+  rules:
+    - host: plaza.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentplaza-frontend
+                port:
+                  name: http

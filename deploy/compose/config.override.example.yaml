@@ -1,0 +1,4 @@
+services:
+  frontend:
+    volumes:
+      - ./deploy/frontend.config.local.js:/usr/share/nginx/html/config.js:ro

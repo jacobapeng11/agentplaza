@@ -1,0 +1,32 @@
+/* Increased touch targets for mobile (at least 44x44px recommendation) */
+
+@media (max-width: 768px) {
+  /* 按钮调整 */
+  .el-button {
+    min-height: 44px;
+    padding: 12px 20px;
+    font-size: 16px;
+  }
+
+  /* 输入框调整 */
+  .el-input__inner,
+  .el-textarea__inner {
+    min-height: 44px;
+    font-size: 16px; /* 防止 iOS Safari 自动缩放 */
+  }
+
+  /* 列表可选项调整 */
+  .el-table__row,
+  li.list-item,
+  .el-menu-item {
+    min-height: 44px;
+  }
+
+  /* 复选框和单选框区域 */
+  .el-checkbox__label,
+  .el-radio__label {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

@@ -1,0 +1,35 @@
+/* Mobile Responsive Overrides */
+
+@media (max-width: 768px) {
+  /* 基础容器修正，防止横向滚动条，支持惯性滚动 */
+  html,
+  body,
+  #app {
+    overflow-x: hidden;
+    width: 100vw;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 特定可滚动区域全面开启惯性滑动 */
+  .el-scrollbar__wrap,
+  .overflow-y-auto,
+  .scroll-container {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 基础内边距修正 */
+  .app-main,
+  .page-container {
+    padding: 10px !important;
+  }
+
+  /* 使得所有写死的固定宽度自适应 */
+  .el-card,
+  .el-dialog,
+  .el-container {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
