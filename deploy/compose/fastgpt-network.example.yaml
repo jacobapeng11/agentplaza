@@ -1,0 +1,15 @@
+services:
+  backend:
+    networks:
+      - default
+      - fastgpt
+
+  skill-worker:
+    networks:
+      - default
+      - fastgpt
+
+networks:
+  fastgpt:
+    external: true
+    name: ${FASTGPT_DOCKER_NETWORK:?Set FASTGPT_DOCKER_NETWORK in .env}

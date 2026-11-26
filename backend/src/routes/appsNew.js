@@ -15,13 +15,28 @@ router.use((req, res, next) => {
   }
   next();
 });
-const { verifyToken } = require('../utils/auth');
+const { getUserInfoFromToken, verifyToken } = require('../utils/auth');
 const { filterVisiblePlazaApps } = require('../utils/appVisibility');
 const { createFastgptAppPermissionService } = require('../services/fastgptAppPermissionService');
 const { createWecomBotAdminService } = require('../services/wecomBotAdminService');
 
 const permissionService = createFastgptAppPermissionService();
 const wecomBotAdminService = createWecomBotAdminService();
+
+async function requirePlazaSession(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || req.headers.authtoken;
+    const user = await getUserInfoFromToken(authHeader);
+    if (!user) {
+      const message = authHeader ? 'Invalid authentication token or session expired' : 'Authentication required';
+      return res.status(401).json({ code: 401, success: false, message, data: null });
+    }
+    res.locals.plazaUser = user;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
 
 /**
  * 辅助函数：为应用卡片附加企业微信 Bot 配置权限。
@@ -372,7 +387,7 @@ function isPrivateApplication() {
  * @query   {number} page - 页码 (默认 1)
  * @query   {number} limit - 每页数量 (默认 20)
  */
-router.get('/apps-new/by-category', async (req, res, next) => {
+router.get('/apps-new/by-category', requirePlazaSession, async (req, res, next) => {
   try {
     const {
       category = 'all',
@@ -382,26 +397,7 @@ router.get('/apps-new/by-category', async (req, res, next) => {
       limit = 20
     } = req.query;
 
-    // ========== 强制登录检查 ==========
-    const { getUserInfoFromToken } = require('../utils/auth');
-    const authHeader = req.headers.authorization || req.headers.authtoken;
-    
-    if (!authHeader) {
-      return res.status(401).json({
-        code: 401,
-        success: false,
-        message: 'Authentication required',
-        data: null
-      });
-    }
-
-    // ========== 获取用户信息 ==========
-    let userInfo = null;
-    try {
-      userInfo = await getUserInfoFromToken(authHeader);
-    } catch (err) {
-      logger.error('[by-category] 获取用户信息失败:', err);
-    }
+    const userInfo = res.locals.plazaUser;
 
     // ========== 权限过滤逻辑开始 ==========
     let allowedAppIds = null; // null 表示不进行权限过滤
@@ -409,7 +405,7 @@ router.get('/apps-new/by-category', async (req, res, next) => {
     let currentUserTmbIds = [];
 
     // 从token获取用户信息
-    if (authHeader && userInfo) {
+    if (userInfo) {
       try {
         if (userInfo.employeeNumber) {
           const TeamMembers = require('../models/TeamMembers');
@@ -927,7 +923,7 @@ router.get('/apps-new/by-category', async (req, res, next) => {
  * @query   {number} page - 页码 (默认 1)
  * @query   {number} limit - 每页数量 (默认 20)
  */
-router.get('/apps-new/hot-recommend', async (req, res, next) => {
+router.get('/apps-new/hot-recommend', requirePlazaSession, async (req, res, next) => {
   try {
     const {
       search = '',
@@ -936,33 +932,14 @@ router.get('/apps-new/hot-recommend', async (req, res, next) => {
       limit = 20
     } = req.query;
 
-    // ========== 强制登录检查 ==========
-    const { getUserInfoFromToken } = require('../utils/auth');
-    const authHeader = req.headers.authorization || req.headers.authtoken;
-    
-    if (!authHeader) {
-      return res.status(401).json({
-        code: 401,
-        success: false,
-        message: 'Authentication required',
-        data: null
-      });
-    }
-
-    // ========== 获取用户信息 ==========
-    let userInfo = null;
-    try {
-      userInfo = await getUserInfoFromToken(authHeader);
-    } catch (err) {
-      logger.error('[hot-recommend] 获取用户信息失败:', err);
-    }
+    const userInfo = res.locals.plazaUser;
 
     // ========== 权限过滤逻辑 ==========
     let allowedAppIds = null;
     // 复用下方权限过滤阶段解析出的当前用户 tmbId，供私有应用过滤使用
     let currentUserTmbIds = [];
 
-    if (authHeader && userInfo) {
+    if (userInfo) {
       try {
         if (userInfo.employeeNumber) {
           const TeamMembers = require('../models/TeamMembers');
@@ -1944,31 +1921,12 @@ router.get('/categories', async (req, res, next) => {
  * @query   {number} page - 页码 (默认 1)
  * @query   {number} limit - 每页数量 (默认 20)
  */
-router.get('/categories/:categoryId/apps', async (req, res, next) => {
+router.get('/categories/:categoryId/apps', requirePlazaSession, async (req, res, next) => {
   try {
     const { categoryId } = req.params;
     const { page = 1, limit = 20, sortBy = 'hotScore' } = req.query;
 
-    // ========== 强制登录检查 ==========
-    const { getUserInfoFromToken } = require('../utils/auth');
-    const authHeader = req.headers.authorization || req.headers.authtoken;
-    
-    if (!authHeader) {
-      return res.status(401).json({
-        code: 401,
-        success: false,
-        message: 'Authentication required',
-        data: null
-      });
-    }
-
-    // ========== 获取用户信息 ==========
-    let userInfo = null;
-    try {
-      userInfo = await getUserInfoFromToken(authHeader);
-    } catch (err) {
-      logger.error('[categories/:categoryId/apps] 获取用户信息失败:', err);
-    }
+    const userInfo = res.locals.plazaUser;
 
     // 广场使用权由下方 attachApplicationAccessPermission 统一计算。
     // 旧 allowedAppIds 不再用于可见性过滤，避免重复读取全部权限。
@@ -2268,19 +2226,13 @@ router.get('/categories/:categoryId/apps', async (req, res, next) => {
  * @desc    获取混合应用列表（FastGPT + 外链应用）
  * @access  Private
  */
-router.get('/apps-new/by-category-mixed', async (req, res, next) => {
+router.get('/apps-new/by-category-mixed', requirePlazaSession, async (req, res, next) => {
   try {
     const { category = 'all', search = '', sortBy = 'hotScore', page = 1, limit = 20 } = req.query;
-    const { getUserInfoFromToken } = require('../utils/auth');
+
     const AppsLink = require('../models/AppsLink');
     const { buildLinkAppPermissionFilter } = require('../services/permissionService');
-    
-    const authHeader = req.headers.authorization || req.headers.authtoken;
-    if (!authHeader) {
-      return res.status(401).json({ code: 401, success: false, message: 'Authentication required' });
-    }
-    
-    const userInfo = await getUserInfoFromToken(authHeader);
+    const userInfo = res.locals.plazaUser;
     
     // 构建查询条件
     let query = {};
@@ -2354,17 +2306,10 @@ router.get('/apps-new/by-category-mixed', async (req, res, next) => {
  * @desc    获取混合"我创建的"应用
  * @access  Private
  */
-router.get('/apps-new/my-created-mixed', async (req, res, next) => {
+router.get('/apps-new/my-created-mixed', requirePlazaSession, async (req, res, next) => {
   try {
-    const { getUserInfoFromToken } = require('../utils/auth');
     const AppsLink = require('../models/AppsLink');
-    
-    const authHeader = req.headers.authorization || req.headers.authtoken;
-    if (!authHeader) {
-      return res.status(401).json({ code: 401, success: false, message: 'Authentication required' });
-    }
-    
-    const userInfo = await getUserInfoFromToken(authHeader);
+    const userInfo = res.locals.plazaUser;
     
     // 查询 FastGPT 应用（通过 tmbId）
     const fastgptApps = await AppsNew.find({ tmbId: userInfo._id }).lean();
@@ -2403,17 +2348,10 @@ router.get('/apps-new/my-created-mixed', async (req, res, next) => {
  * @desc    获取混合"我收藏的"应用
  * @access  Private
  */
-router.get('/apps-new/my-collected-mixed', async (req, res, next) => {
+router.get('/apps-new/my-collected-mixed', requirePlazaSession, async (req, res, next) => {
   try {
-    const { getUserInfoFromToken } = require('../utils/auth');
     const AppsLink = require('../models/AppsLink');
-    
-    const authHeader = req.headers.authorization || req.headers.authtoken;
-    if (!authHeader) {
-      return res.status(401).json({ code: 401, success: false, message: 'Authentication required' });
-    }
-    
-    const userInfo = await getUserInfoFromToken(authHeader);
+    const userInfo = res.locals.plazaUser;
     
     // 查询所有收藏记录
     const collects = await Collect.find({ userId: userInfo._id }).lean();

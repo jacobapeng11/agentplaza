@@ -8,6 +8,28 @@ const cardSource = readSource('../src/components/plaza/AppCardNew.vue');
 const plazaSource = readSource('../src/views/AgentPlaza.vue');
 const categorySource = readSource('../src/views/CategoryDetail.vue');
 const accessSource = readSource('../src/utils/appAccess.ts');
+const myAgentsSource = readSource('../src/views/MyAgents.vue');
+const myAgentsSectionSource = readSource('../src/components/plaza/MyAgentsSection.vue');
+const fastgptConfigSource = readSource('../src/config/fastgptConfig.ts');
+
+test('created-app cards open FastGPT details while collected and public cards open chat', () => {
+  assert.match(fastgptConfigSource, /openDetail \? buildFastgptUrl\('\/app\/detail'/);
+  assert.match(fastgptConfigSource, /: buildFastgptChatUrl\(appId, pane\)/);
+  assert.match(myAgentsSectionSource, /handleAppClick\(app\._id, 'created'\)/);
+  assert.match(myAgentsSectionSource, /handleAppClick\(app\._id, 'collected'\)/);
+  assert.match(plazaSource, /buildFastgptAppOpenUrl\(appId, source === 'created', 'ra'\)/);
+  assert.match(myAgentsSource, /buildFastgptAppOpenUrl\(appId, source === 'created', 'ra'\)/);
+  assert.match(categorySource, /buildFastgptAppOpenUrl\(appId, false, 'ra'\)/);
+});
+
+test('link applications keep priority over FastGPT access', () => {
+  for (const source of [plazaSource, categorySource, myAgentsSource]) {
+    const linkBranch = source.indexOf('if (appUrl)');
+    const fastgptBranch = source.indexOf('buildFastgptAppOpenUrl(appId', linkBranch);
+    assert.notEqual(linkBranch, -1);
+    assert.ok(fastgptBranch > linkBranch);
+  }
+});
 
 test('AppCardNew only marks applications with explicit access', () => {
   assert.match(cardSource, /v-if="canAccess"[^>]*>有权限</);

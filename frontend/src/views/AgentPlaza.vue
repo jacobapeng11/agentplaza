@@ -53,7 +53,7 @@
       :total="collectedPagination.total"
       :has-more="collectedPagination.page < collectedPagination.totalPages"
       @update:visible="showCollectedModal = $event"
-      @agent-click="handleAgentClick"
+      @agent-click="handleAppClick"
       @load-more="loadMoreCollected"
     />
 
@@ -65,7 +65,7 @@
       :total="createdPagination.total"
       :has-more="createdPagination.page < createdPagination.totalPages"
       @update:visible="showCreatedModal = $event"
-      @agent-click="handleAgentClick"
+      @agent-click="appId => handleAppClick(appId, 'created')"
       @load-more="loadMoreCreated"
     />
 
@@ -102,7 +102,7 @@ import CreatedModal from '../components/plaza/CreatedModal.vue'
 import StickyHeader from '../components/plaza/StickyHeader.vue'
 import CategoryAppsList from '../components/plaza/CategoryAppsList.vue'
 import CategoryModal from '../components/plaza/CategoryModal.vue'
-import { buildFastgptChatUrl } from '../config/fastgptConfig'
+import { buildFastgptAppOpenUrl } from '../config/fastgptConfig'
 import { ensureAppAccessBeforeOpen } from '../utils/appAccess'
 
 // ========== 状态管理 ==========
@@ -525,20 +525,10 @@ const handleHotAgentsPageChange = async (page: number) => {
 
 // ========== 导航相关 ==========
 /**
- * 处理智能体卡片点击
- * 在新标签页打开智能体工作区
- * @param agentId - 智能体ID
- */
-const handleAgentClick = (agentId: string) => {
-  const url = buildFastgptChatUrl(agentId, 'ra')
-  if (url) window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-/**
  * 处理应用卡片点击（新设计）
  * @param appId - 应用ID
  */
-const handleAppClick = async (appId: string) => {
+const handleAppClick = async (appId: string, source: 'created' | 'collected' | 'plaza' = 'plaza') => {
   // 查找对应的应用对象
   let app = null;
   
@@ -571,6 +561,8 @@ const handleAppClick = async (appId: string) => {
     app = categoryModalApps.value.find((a: any) => a._id === appId);
   }
 
+  app ||= [...allCreatedAgents.value, ...allCollectedAgents.value].find(item => item._id === appId);
+
   if (!(await ensureAppAccessBeforeOpen(app))) {
     return;
   }
@@ -595,7 +587,7 @@ const handleAppClick = async (appId: string) => {
     url = appUrl;
   } else {
     // 普通应用：跳转到应用详情页
-    url = buildFastgptChatUrl(appId, 'ra');
+    url = buildFastgptAppOpenUrl(appId, source === 'created', 'ra');
   }
   
   if (url) window.open(url, '_blank', 'noopener,noreferrer');

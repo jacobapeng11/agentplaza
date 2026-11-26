@@ -18,6 +18,7 @@ test('IdTrust login verifies state and stores an authenticated Redis session', a
   process.env.OAUTH_CLIENT_SECRET = 'example-only';
   process.env.ADMIN_BADGES = 'example-admin';
   process.env.WECOM_BOT_WORKER_ENABLED = 'false';
+  process.env.SKILL_ENABLED = 'false';
   delete process.env.HIGRESS_CONSOLE_BASE_URL;
 
   let exchanged = 0;
@@ -90,6 +91,7 @@ test('IdTrust login verifies state and stores an authenticated Redis session', a
   assert.equal(payload.userInfo.IsAdmin, true);
   assert.equal(payload.userInfo.McpEnabled, false);
   assert.equal(payload.userInfo.WecomBotEnabled, false);
+  assert.equal(payload.userInfo.SkillEnabled, false);
   assert.match(payload.authToken, /^[a-f0-9]{64}$/);
   assert.equal(exchanged, 1);
   const authenticatedUser = await require('../src/utils/auth').getUserInfoFromToken('Bearer ' + payload.authToken);

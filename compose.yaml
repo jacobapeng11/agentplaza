@@ -1,21 +1,11 @@
-services:
-  mongo:
-    image: mongo:8.0
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
-      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD in .env}
-    volumes:
-      - mongo-data:/data/db
-      - ./deploy/compose/mongo-init.js:/docker-entrypoint-initdb.d/10-agentplaza.js:ro
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --host mongo --quiet --username agentplaza --password \"$$MONGO_APP_PASSWORD\" --authenticationDatabase agentplaza --eval 'quit(db.runCommand({ping:1}).ok === 1 ? 0 : 1)'"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 15s
+x-backend-runtime: &backend-runtime
+  build: ./backend
+  restart: unless-stopped
+  env_file:
+    - path: ./deploy/compose/backend.env
+      format: raw
 
+services:
   redis:
     image: redis:8.2-alpine
     restart: unless-stopped
@@ -31,19 +21,12 @@ services:
       retries: 20
 
   backend:
-    build: ./backend
-    restart: unless-stopped
-    env_file:
-      - path: ./deploy/compose/backend.env
-        format: raw
+    <<: *backend-runtime
     environment:
       NODE_ENV: production
       PORT: 3000
-      MONGODB_URI: mongodb://agentplaza:${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD in .env}@mongo:27017/agentplaza?authSource=agentplaza
       REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379/0
     depends_on:
-      mongo:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -52,6 +35,16 @@ services:
       timeout: 5s
       retries: 12
       start_period: 15s
+
+  skill-worker:
+    <<: *backend-runtime
+    profiles: ["skills"]
+    command: ["node", "src/workers/skillParserWorker.js"]
+    environment:
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
@@ -69,5 +62,4 @@ services:
       retries: 6
 
 volumes:
-  mongo-data:
   redis-data:

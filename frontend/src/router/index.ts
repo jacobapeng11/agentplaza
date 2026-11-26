@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAppsStore } from '../stores/apps';
-import { isAppAdmin, isMcpEnabled, isWecomBotEnabled } from '../config/adminConfig';
+import { isAppAdmin, isMcpEnabled, isWecomBotEnabled, isSkillEnabled } from '../config/adminConfig';
 
 const routes = [
   {
@@ -44,6 +44,18 @@ const routes = [
     path: '/mcp/server/:id',
     name: 'McpDetail',
     component: () => import('../views/McpDetail.vue')
+  },
+  {
+    path: '/skills',
+    name: 'SkillMarketplace',
+    component: () => import('../views/SkillMarketplace.vue'),
+    meta: { title: 'Skill 广场', requiresSkill: true }
+  },
+  {
+    path: '/admin/skills',
+    name: 'AdminSkillManagement',
+    component: () => import('../views/AdminSkillManagement.vue'),
+    meta: { title: 'Skill 管理', requiresAdmin: true, requiresSkill: true }
   },
   {
     path: '/link-apps',
@@ -114,6 +126,7 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.requiresAdmin && !isAppAdmin()) return { name: 'Home' };
+  if (to.meta.requiresSkill && !isSkillEnabled()) return { name: 'Home' };
   if ((to.path.startsWith('/mcp') || to.name === 'MyMcps') && !isMcpEnabled()) {
     return { name: 'Home' };
   }

@@ -30,7 +30,7 @@
             v-for="app in displayedCreatedApps"
             :key="app._id"
             class="app-card"
-            @click="handleAppClick(app._id)"
+            @click="handleAppClick(app._id, 'created')"
           >
             <img :src="getAvatarUrl(app)" class="app-avatar">
             <div class="app-content">
@@ -84,7 +84,7 @@
             v-for="app in displayedCollectedApps"
             :key="app._id"
             class="app-card"
-            @click="handleAppClick(app._id)"
+            @click="handleAppClick(app._id, 'collected')"
           >
             <img :src="getAvatarUrl(app)" class="app-avatar" />
             <div class="app-content">
@@ -130,7 +130,7 @@ defineProps<Props>();
 const emit = defineEmits<{
   (e: 'viewMoreCreated'): void;    // 查看更多创建的应用
   (e: 'viewMoreCollected'): void;  // 查看更多收藏的应用
-  (e: 'appClick', appId: string): void;  // 点击应用卡片
+  (e: 'appClick', appId: string, source: 'created' | 'collected'): void;  // 点击应用卡片
 }>();
 
 const appsStore = useAppsStore();
@@ -160,8 +160,8 @@ const handleViewMoreCollected = () => {
   emit('viewMoreCollected');
 };
 
-const handleAppClick = (appId: string) => {
-  emit('appClick', appId);
+const handleAppClick = (appId: string, source: 'created' | 'collected') => {
+  emit('appClick', appId, source);
 };
 
 // 格式化数字

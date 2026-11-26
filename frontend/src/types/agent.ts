@@ -11,6 +11,7 @@ export interface Agent {
   version?: string;
   avatar?: string;
   inheritPermission?: boolean;
+  canAccess?: boolean;
   likeCount: number;
   favoriteCount: number;
   hotScore: number;

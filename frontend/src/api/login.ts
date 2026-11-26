@@ -5,7 +5,7 @@ interface LoginResponse {
   code: number;
   authToken?: string;
   user?: { name: string };
-  userInfo?: { Badge?: string; Name?: string; IsAdmin?: boolean; [key: string]: unknown };
+  userInfo?: { Badge?: string; Name?: string; IsAdmin?: boolean; SkillEnabled?: boolean; [key: string]: unknown };
   returnTo?: string;
 }
 

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentplaza-skill-worker
+  labels:
+    app.kubernetes.io/part-of: agentplaza
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agentplaza-skill-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentplaza-skill-worker
+        app.kubernetes.io/part-of: agentplaza
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: skill-worker
+          image: registry.example.com/agentplaza/backend:1.1.0
+          command: ["node", "src/workers/skillParserWorker.js"]
+          env:
+            - name: NODE_ENV
+              value: production
+          envFrom:
+            - secretRef:
+                name: agentplaza-backend-env
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: worker-tmp
+              mountPath: /tmp
+      volumes:
+        - name: worker-tmp
+          emptyDir:
+            sizeLimit: 1Gi

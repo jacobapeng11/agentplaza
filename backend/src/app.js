@@ -11,7 +11,7 @@ const { normalizeEncryptionKey } = require('./services/wecomBotSecretService');
 
 function createApp() {
   const app = express();
-  const { McpEnabled, WecomBotEnabled } = readIntegrationConfig();
+  const { McpEnabled, WecomBotEnabled, SkillEnabled } = readIntegrationConfig();
   if (McpEnabled || WecomBotEnabled) normalizeEncryptionKey();
 
   // Security middleware
@@ -38,6 +38,10 @@ function createApp() {
   app.use('/api/search', require('./routes/search'));
   if (McpEnabled) {
     app.use('/api/mcp', require('./routes/mcp'));
+  }
+  if (SkillEnabled) {
+    require('./services/skillStorage').getSkillStorage();
+    app.use('/api/skills', require('./routes/skills'));
   }
 
   // Health check endpoint

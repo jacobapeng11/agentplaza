@@ -79,7 +79,7 @@ const handleCardClick = () => {
     url = appUrl;
   } else {
     // 普通应用：跳转到应用详情页
-    url = buildFastgptChatUrl(props.agent._id);
+    url = buildFastgptChatUrl(props.agent._id, 'ra');
   }
   
   if (url) window.open(url, '_blank', 'noopener,noreferrer');

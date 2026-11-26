@@ -6,6 +6,7 @@ const { getWecomBotWorkerScheduler } = require('./services/wecomBotWorkerRuntime
 const { getFrontendUrl } = require('./config/frontendUrl');
 const { getRedisUrl, ensureRedisConnected } = require('./utils/redis');
 const { readWecomBotConfig } = require('./config/wecomBot');
+const { readIntegrationConfig } = require('./config/integrations');
 
 /**
  * 等待 HTTP server 停止接收新连接。
@@ -137,13 +138,27 @@ async function startServer() {
   await connectDB();
   const { startAppChatStats } = require('./services/appChatStatsService');
   const stopAppChatStats = await startAppChatStats();
+  const stopServices = [stopAppChatStats];
+  if (readIntegrationConfig().SkillEnabled) {
+    await Promise.all([
+      require('./models/Skill').init(),
+      require('./models/SkillVersion').init(),
+      require('./models/SkillImportJob').init(),
+      require('./models/SkillSubmission').init(),
+      require('./models/SkillFavorite').init(),
+      require('./models/SkillViewer').init()
+    ]);
+    const { startSkillOverview } = require('./services/skillOverviewService');
+    const { startSkillStatsJob } = require('./services/skillStatsService');
+    stopServices.push(await startSkillOverview(), startSkillStatsJob());
+  }
 
   const PORT = process.env.PORT || 3000;
   const server = app.listen(PORT, () => {
     logger.info(`Server is running on port ${PORT}`);
   });
   installProcessLifecycleHandlers({ server });
-  server.on('close', stopAppChatStats);
+  server.on('close', () => stopServices.forEach(stop => stop()));
   const { startHotScoreJob } = require('./jobs/hotScoreJob');
   startHotScoreJob();
 

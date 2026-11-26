@@ -87,7 +87,7 @@ import AppCardNew from '../components/plaza/AppCardNew.vue';
 import { useAppsStore } from '../stores/apps';
 import { appsNewApi } from '../api/apps';
 import type { AppNew } from '../types/agent';
-import { buildFastgptChatUrl } from '../config/fastgptConfig';
+import { buildFastgptAppOpenUrl } from '../config/fastgptConfig';
 import { ensureAppAccessBeforeOpen } from '../utils/appAccess';
 
 const route = useRoute();
@@ -265,7 +265,7 @@ const handleAppClick = async (appId: string) => {
     url = appUrl;
   } else {
     // 普通应用：跳转到应用详情页
-    url = buildFastgptChatUrl(appId, 'ra');
+    url = buildFastgptAppOpenUrl(appId, false, 'ra');
   }
   
   if (url) window.open(url, '_blank', 'noopener,noreferrer');

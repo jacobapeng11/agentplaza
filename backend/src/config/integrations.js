@@ -6,7 +6,8 @@ function readIntegrationConfig(env = process.env) {
       env.HIGRESS_CONSOLE_BASE_URL?.trim()
       && (env.MCP_GATEWAY_BASE_URL?.trim() || env.HIGRESS_GATEWAY_BASE_URL?.trim())
     ),
-    WecomBotEnabled: readWecomBotConfig(env).enabled
+    WecomBotEnabled: readWecomBotConfig(env).enabled,
+    SkillEnabled: env.SKILL_ENABLED === 'true'
   };
 }
 

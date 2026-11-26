@@ -62,6 +62,18 @@
         </button>
 
         <button
+          v-if="isSkillEnabled()"
+          class="sidebar-item"
+          :class="{ active: route.path.startsWith('/skills') }"
+          type="button"
+          title="Skill 广场"
+          @click="handleSkillMarket"
+        >
+          <el-icon><MagicStick /></el-icon>
+          <span v-show="isSidebarExpanded">Skill 广场</span>
+        </button>
+
+        <button
           class="sidebar-item"
           :class="{ active: route.path.startsWith('/my-agents') }"
           type="button"
@@ -107,6 +119,18 @@
           <span v-show="isSidebarExpanded">应用管理</span>
         </button>
 
+        <button
+          v-if="isAppAdminUser && isSkillEnabled()"
+          class="sidebar-item"
+          :class="{ active: route.path.startsWith('/admin/skills') }"
+          type="button"
+          title="Skill 管理"
+          @click="navigateTo('/admin/skills')"
+        >
+          <el-icon><DocumentChecked /></el-icon>
+          <span v-show="isSidebarExpanded">Skill 管理</span>
+        </button>
+
         <div v-if="FASTGPT_DASHBOARD_APPS_URL" class="sidebar-divider" />
 
         <button
@@ -139,15 +163,17 @@ import {
   ArrowLeft,
   ArrowRight,
   Connection,
+  DocumentChecked,
   Grid,
   House,
+  MagicStick,
   Menu,
   Plus,
   Setting,
   User
 } from '@element-plus/icons-vue';
 import { useRoute, useRouter } from 'vue-router';
-import { isAppAdmin, isMcpEnabled } from '../../config/adminConfig';
+import { isAppAdmin, isMcpEnabled, isSkillEnabled } from '../../config/adminConfig';
 import { FASTGPT_DASHBOARD_APPS_URL } from '../../config/fastgptConfig';
 
 const router = useRouter();
@@ -226,6 +252,7 @@ const handleMyAgents = () => {
 };
 
 const handleLinkApps = () => navigateTo('/link-apps');
+const handleSkillMarket = () => navigateTo('/skills');
 const handleMcpMarket = () => navigateTo('/mcp');
 const handleAdminApps = () => navigateTo('/admin/apps');
 
@@ -481,17 +508,25 @@ const handleCreateFastGpt = () => {
     padding-left: 0;
   }
 
+  .plaza-navigation {
+    height: calc(60px + env(safe-area-inset-top));
+    flex: 0 0 calc(60px + env(safe-area-inset-top));
+  }
+
   .mobile-topbar {
-    position: sticky;
-    top: 0;
+    position: fixed;
+    inset: 0 0 auto;
     z-index: 2050;
+    box-sizing: border-box;
     display: flex;
+    width: 100%;
     align-items: center;
     justify-content: space-between;
-    height: 60px;
-    padding: 0 16px;
+    height: calc(60px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 16px 0;
     border-bottom: 1px solid #deedf2;
-    background: rgba(248, 252, 254, 0.94);
+    background: rgba(248, 252, 254, 0.98);
+    box-shadow: 0 6px 18px rgba(34, 78, 98, 0.07);
     backdrop-filter: blur(16px);
   }
 

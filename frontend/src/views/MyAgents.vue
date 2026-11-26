@@ -50,7 +50,7 @@
             v-for="app in sortedCreatedApps"
             :key="app._id"
             :app="app"
-            @click="handleAppClick(app._id)"
+            @click="handleAppClick(app._id, 'created')"
           />
         </div>
 
@@ -101,7 +101,7 @@
             v-for="app in sortedCollectedApps"
             :key="app._id"
             :app="app"
-            @click="handleAppClick(app._id)"
+            @click="handleAppClick(app._id, 'collected')"
           />
         </div>
 
@@ -122,7 +122,8 @@ import AppCardNew from '../components/plaza/AppCardNew.vue';
 import { useAppsStore } from '../stores/apps';
 import { agentsApi } from '../api/apps';
 import type { Agent } from '../types/agent';
-import { buildFastgptChatUrl } from '../config/fastgptConfig';
+import { buildFastgptAppOpenUrl } from '../config/fastgptConfig';
+import { ensureAppAccessBeforeOpen } from '../utils/appAccess';
 
 const router = useRouter();
 const route = useRoute();
@@ -230,12 +231,13 @@ const loadMyCollectedApps = async () => {
 /**
  * 处理应用点击
  */
-const handleAppClick = async (appId: string) => {
+const handleAppClick = async (appId: string, source: 'created' | 'collected') => {
   console.log('点击应用:', appId);
   
   // 查找对应的应用对象（从创建和收藏列表中查找）
   let app = sortedCreatedApps.value.find(a => a._id === appId) || 
             sortedCollectedApps.value.find(a => a._id === appId);
+  if (!(await ensureAppAccessBeforeOpen(app))) return;
   
   // 检查是否有 appUrl 字段（外链应用）
   const appUrl = app ? (app as any).appUrl : null;
@@ -257,7 +259,7 @@ const handleAppClick = async (appId: string) => {
     url = appUrl;
   } else {
     // 普通应用：跳转到应用详情页
-    url = buildFastgptChatUrl(appId, 'ra');
+    url = buildFastgptAppOpenUrl(appId, source === 'created', 'ra');
   }
   
   if (url) window.open(url, '_blank', 'noopener,noreferrer');

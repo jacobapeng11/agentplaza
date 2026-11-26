@@ -17,6 +17,7 @@
   "author": "Agent Plaza Dev Team",
   "license": "MIT",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1178.0",
     "@wecom/aibot-node-sdk": "^1.0.6",
     "axios": "^1.12.2",
     "cors": "^2.8.5",
@@ -26,14 +27,15 @@
     "express-validator": "^7.3.0",
     "form-data": "^4.0.5",
     "helmet": "^7.1.0",
-    "js-yaml": "^3.14.1",
+    "js-yaml": "^3.15.2",
     "moment": "^2.29.4",
     "mongoose": "^8.0.0",
-    "multer": "^2.0.2",
+    "multer": "^2.5.0",
     "node-cron": "^3.0.2",
     "redis": "^4.7.1",
     "saxes": "^6.0.0",
-    "yauzl": "^3.2.0"
+    "yauzl": "^3.2.0",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",

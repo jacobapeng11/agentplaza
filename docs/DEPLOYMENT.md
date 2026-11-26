@@ -1,93 +1,104 @@
-# Agent Plaza 部署指南
+# Agent Plaza 部署总览
 
-本指南假设在仓库根目录的 Linux 或 WSL 终端执行命令。需要从公网访问时，请为站点启用 HTTPS。
+本文中的命令在 Linux 或 WSL 终端执行。建议先用测试环境接通所有依赖，再在生产环境使用客户自己的 DNS、账号、证书和密钥。
 
-## 部署前准备
+## 1. 列出要启用的模块
 
-| 设施 | Docker Compose | Kubernetes |
+| 模块 | 依赖 | 谁需要访问 |
 | --- | --- | --- |
-| 运行环境 | Linux Docker Engine 和 Docker Compose 插件 v2.30 或更新版本。单机验证可从 2 vCPU、4 GiB 内存和 20 GiB 可用磁盘起步，生产容量按负载和数据保留量评估。 | Kubernetes 集群、与集群版本兼容的 `kubectl`、能构建镜像的 Docker 主机或 CI、集群节点可拉取镜像的镜像仓库。 |
-| MongoDB | Compose 自带 MongoDB 8.0，使用认证和命名卷，自动创建 `agentplaza` 数据库用户。x86_64 主机需支持 AVX。 | 提前开通支持认证的 MongoDB，准备专用数据库和拥有该库读写权限的账户。按需配置 TLS、网络放行、持久化和备份。 |
-| Redis | Compose 自带 Redis 8.2，启用密码、AOF 持久化和命名卷。 | 提前开通支持认证的 Redis，准备用于应用会话的专用实例或数据库。按需配置 TLS、网络放行、持久化和备份。 |
-| 入口 | 对外开放时准备站点域名、TLS 证书和 HTTPS 反向代理，代理所有路径到前端。 | 正式访问准备域名、运行中的 Ingress Controller、负载均衡或入口地址，以及该命名空间的 TLS Secret。也可用 `kubectl port-forward` 本地验收。 |
-| 登录 | 客户提供兼容 IdTrust 授权码登录及用户信息接口的身份服务。后台能访问该服务，浏览器能访问授权页面。 | 同左。 |
-| 构建网络 | 构建主机需能访问容器镜像仓库和 npm Registry。隔离环境需预先镜像基础镜像和 npm 依赖。 | 同左。运行时集群节点需可访问应用镜像仓库。 |
+| 基础应用广场 | 正在运行、有应用的 FastGPT，及其实际使用的主 MongoDB 数据库 | Agent Plaza 后端和启用的 Skill Worker 访问同一个 MongoDB |
+| 登录和会话 | IdTrust 兼容授权码身份服务、Redis | 浏览器访问身份授权页，后端访问身份 API 和 Redis |
+| FastGPT 应用访问 | FastGPT 网页入口，按实际集成配置服务端 FastGPT API | 浏览器访问网页入口，Agent Plaza 可选集成访问相应 API |
+| MCP 市场 | 支持项目所需管理 API 的 Higress 控制面和可用数据面网关 | 后端访问控制面，MCP 客户端访问网关，网关访问上游 |
+| Skill 市场 | 私有 S3 兼容存储桶、Skill Worker | 后端和 Worker 访问存储和 MongoDB |
+| 企业微信机器人 | 企业微信长连接机器人凭据，及用于机器人服务的 FastGPT 配置 | 后端访问机器人服务和配置的 FastGPT API |
 
-在身份服务中创建授权码应用，记录客户端 ID 和密钥，登记与浏览器访问地址匹配的回调 URL，例如 `https://plaza.example.com/`。
+先完成 [FastGPT / MongoDB 接入](dependencies/fastgpt/README.md)，再按需完成 [Higress / MCP 接入](dependencies/higress/README.md) 和 [Skill / OSS 接入](dependencies/skill-oss/README.md)。各手册包含所需的服务、端口、配置和验收步骤。
 
-身份服务需提供以下 IdTrust 兼容接口，并为应用授权查询用户信息。
+### 身份源与密钥
 
-| 接口 | 应用使用方式 |
-| --- | --- |
-| `GET /oauth2/authorize` | 浏览器获取授权码，身份服务回调站点根路径。 |
-| `GET /oauth2/token` | 后端使用授权码交换 `access_token`。 |
-| `GET /oauth2/get_user_info` | 后端使用 `access_token` 读取用户标识 `name`，该字段在客户身份系统中需唯一且稳定。 |
+1. 在 IdTrust 兼容身份服务中创建 OAuth 2.0 授权码应用，取客户端 ID 和密钥。把站点根路径登记为回调，例如 `https://plaza.example.com/`，末尾 `/` 也参与匹配。
+2. 确认该服务提供 `GET /oauth2/authorize`、`GET /oauth2/token`（返回 `access_token`）和 `GET /oauth2/get_user_info`（返回唯一稳定的 `name` 账号标识）。浏览器访问授权地址，后端访问服务端接口。正式身份地址使用 HTTPS。
+3. 准备普通账号及管理员账号。管理员以 `ADMIN_BADGES` 中的账号标识为准，多个值用逗号分隔。用身份服务返回的精确值。
+4. 将密码、Token、对象存储密钥和应用加密密钥交由客户的密钥管理系统。示例文件可提交，实际 `.env` 或 `backend.env` 仅在部署端使用。使用私有 CA 时，将 CA 加入浏览器、Node.js 和服务信任链。Node.js 可用 `NODE_EXTRA_CA_CERTS` 指向只读挂载的 PEM 文件。
 
-身份服务地址 `OAUTH_HOST` 使用 HTTPS。本地联调时，身份服务和站点仅对各自的回环地址支持 HTTP。请准备普通用户和管理员各一个，将管理员的 `name` 原值写入 `ADMIN_BADGES`。在这里文档使用的 `example.com` 地址需要替换为实际域名。使用私有 CA 时，将 CA 加入构建镜像和运行环境的信任链，Node.js 服务也可通过 `NODE_EXTRA_CA_CERTS` 指向挂载的 PEM 文件。
+### 其他可选服务
 
-## Docker Compose
+链接应用的图片上传可以使用项目原有的上传服务接口，按客户部署填写 `MINIO_UPLOAD_URL`，需要指定桶时填写 `MINIO_BUCKET`。该接口的配置独立于 Skill 的 `SKILL_OSS_*`。企业微信长连接机器人需要客户自己的机器人配置和对应的 FastGPT API 访问，按需填写 `WECOM_BOT_WORKER_ENABLED=true` 与 `WECOM_BOT_SECRET_ENCRYPTION_KEY`。密钥用于保存受保护的集成凭据，各后端副本使用同一份。带媒体上传的机器人另需配置 `WECOM_BOT_MEDIA_UPLOAD_URL` 和 `WECOM_BOT_MEDIA_ALLOWED_HOSTS`。
 
-### 配置并启动
+## 2. Docker Compose
+
+### 基础设施
+
+- Linux 主机、Docker Engine、Docker Compose **2.30 或更新版本**、Git、curl 和 OpenSSL。拉镜像或安装依赖的环境需访问镜像仓库与 npm Registry。离线环境预先镜像相同版本。
+- FastGPT 与可达的 MongoDB。合用同台 Docker 主机时可以使用共享网络。跨主机用 VPN、VPC 或受控的私网 TCP 入口。
+- 正式站点用 HTTPS 反向代理和域名。MongoDB 通信通过前一步准备的私网路径。
+- Compose 使用带密码、AOF 和命名卷的 Redis。单机验证可从 2 vCPU / 4 GiB 内存起步。启用 Skill 后额外为 Worker、上传临时文件和部署的 OSS 服务预留资源。
+
+### 配置
 
 ```bash
+git clone https://github.com/jacobapeng11/agentplaza.git
+cd agentplaza
 cp .env.example .env
 cp deploy/compose/backend.env.example deploy/compose/backend.env
 chmod 600 .env deploy/compose/backend.env
-
-# 独立生成 MongoDB 管理员、MongoDB 应用账号、Redis 密码，各执行一次
-openssl rand -hex 32
-openssl rand -hex 32
 openssl rand -hex 32
 ```
 
-1. 编辑 `.env`，依次填写 `MONGO_ROOT_PASSWORD`、`MONGO_APP_PASSWORD` 和 `REDIS_PASSWORD`。用十六进制密码可直接拼入数据库 URI。默认监听 `127.0.0.1:8080`，可通过 `PLAZA_PORT` 调整端口。
-2. 编辑 `deploy/compose/backend.env`，填写 `FRONTEND_URL`、四项 OAuth 参数和部署时需要的可选配置。按 `KEY=VALUE` 写入原值。设置 `ADMIN_BADGES` 为管理员的身份服务工号，多个工号以逗号分隔。
-3. 正式部署时把域名解析到 HTTPS 反向代理，转发整站至 `http://127.0.0.1:8080`，保留请求路径、查询参数、Host 和协议头。让 `FRONTEND_URL` 和回调使用公开 HTTPS 地址。本机试用可把它们设为 `http://localhost:8080` 和 `http://localhost:8080/`，并在身份服务中登记该回调。数据库和后端端口保留在 Compose 内部网络。
+1. 把生成的密码放在 `.env` 的 `REDIS_PASSWORD`。入口默认绑定 `127.0.0.1:8080`。
+2. 编辑 `deploy/compose/backend.env`，填入 FastGPT 主库的 `MONGODB_URI`、前端 origin、身份回调和管理员名单。该环境文件采用 raw 模式，每行 `KEY=VALUE`，值按原样传入，通常无需用引号包裹。MongoDB URI 的用户名和密码中的保留字符要做 URI 百分号编码。
+3. 按模块手册配置 FastGPT UI/API、Higress、OSS。浏览器侧 FastGPT 或 MCP 地址可以放在公开运行时配置中，凭据只放后端环境。见下方覆盖配置。
+4. 生产环境将公开域名全部路径代理至 `http://127.0.0.1:8080`，保留 Host、路径和查询参数。`FRONTEND_URL` 与 `OAUTH_REDIRECT_URI` 使用实际 HTTPS 域名。代理访问日志应省略 OAuth 回调查询参数。
+5. 共用 FastGPT Docker 网络时按 [FastGPT 手册](dependencies/fastgpt/README.md) 加载 `deploy/compose/fastgpt-network.example.yaml`，并在 `.env` 设置网络名。后续 `up`、`ps`、`logs` 等命令保持相同的 `-f` 参数。
+
+### 启动并检查
 
 ```bash
 docker compose config --quiet
 docker compose up -d --build --wait
 docker compose ps
-curl -fsS http://localhost:8080/healthz
-curl -fsS http://localhost:8080/api/health
-curl -fsS http://localhost:8080/api/ready
+curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8080/api/health
+curl -fsS http://127.0.0.1:8080/api/ready
 ```
 
-MongoDB 的初始化脚本在新数据卷首次启动时执行。更改已有部署的 MongoDB 账户密码时，先在数据库内更新账号，再更新 `.env` 并重建容器。MongoDB 数据和 Redis 会话分别留在 `mongo-data` 和 `redis-data` 命名卷里。按客户的数据保留要求为这两个服务配置备份和还原演练。
+启用 Skill 后，确保 `SKILL_ENABLED=true` 和对象存储配置已填入，使用 `docker compose --profile skills up -d --build --wait` 同时启动 Skill Worker。外层 HTTPS 代理也要允许 Skill 上传请求的大小，详见 [OSS 手册](dependencies/skill-oss/README.md)。
 
-### 可选浏览器配置
+`/api/ready` 返回 MongoDB、Redis 连接状态。请求成功之后仍需用客户身份登录并检查实际 FastGPT 应用列表。未配置 Higress 或禁用 Skill 时，对应市场入口隐藏。Redis 命名卷持久化会话。MongoDB 和 OSS 由各自运维方备份。
 
-默认以前端同源路径请求 API。要在界面启用 FastGPT 跳转或配置 MCP 网关入口，可复制并编辑公开运行时配置。
+### 覆盖浏览器配置
 
 ```bash
 cp deploy/frontend.config.js.example deploy/frontend.config.local.js
+# 编辑 FastGPT 网页地址和 MCP 客户端可达的网关地址
 docker compose -f compose.yaml -f deploy/compose/config.override.example.yaml up -d --wait
 ```
 
-用上述两个 `-f` 参数执行该部署的后续更新。浏览器会下载 `/config.js`，其中只填写公开地址。
+同时使用 FastGPT 网络时，再加一个 `-f deploy/compose/fastgpt-network.example.yaml`；使用 Skill 时加 `--profile skills`。浏览器加载 `/config.js`，可通过开发者工具确认值。该文件储存公开 URL。
 
-### 更新和停止
+## 3. Kubernetes
 
-备份 MongoDB、保存当前版本和配置后，获取准备部署的版本再执行 `docker compose up -d --build --wait`。变更后端配置也使用该命令重建受影响服务。对外部反向代理，请限制访问日志中的 OAuth 回调查询参数，因为其中会包含短期授权码。停止时执行 `docker compose down`，保留数据卷。回滚时切回之前的代码和配套配置后重新构建，必要时按数据库备份恢复数据。
+### 基础设施
 
-## Kubernetes
+1. 可用集群、兼容的 `kubectl`、镜像构建环境和集群可达的镜像仓库。
+2. 按 FastGPT 手册准备目标 MongoDB Service。跨命名空间确认 DNS、网络策略和 TLS。跨集群确认路由、私有负载均衡、MongoDB 副本集成员地址、TLS 名称和来源限制。
+3. 客户提供 Redis 认证、持久化和备份。后端和 Skill Worker 访问 FastGPT MongoDB。启用 Skill 后两者还需访问对象存储，后端继续访问 Redis。可选 MCP 控制面和身份服务也需要各自的出网规则。使用 NetworkPolicy 时确认同时放行 DNS 和相应目标端口。
+4. 对外 HTTPS 入口需要 Ingress Controller、域名、入口地址及 TLS Secret。只做验收时可使用 `kubectl port-forward`。Skill 大文件需要同步调整控制器的请求体限制和超时时间。
 
-示例创建前端和后端两个 Deployment、相应的 ClusterIP Service、前端运行时 ConfigMap，并提供单独的 Ingress 示例。MongoDB 和 Redis 由客户预先部署并提供持久化，本应用的 Pod 无须数据 PVC。首次部署默认各运行一个副本。
-
-### 构建并推送镜像
+### 构建镜像
 
 ```bash
 REGISTRY=registry.example.com/agentplaza
-TAG=1.0.0
-
+TAG=1.1.0
 docker login registry.example.com
 docker buildx build --platform linux/amd64 -t "$REGISTRY/backend:$TAG" --push ./backend
 docker buildx build --platform linux/amd64 -t "$REGISTRY/frontend:$TAG" --push ./frontend
 ```
 
-将 `REGISTRY`、`TAG`、登录域名和目标架构改成实际值。例如 ARM64 集群选择 `linux/arm64`。编辑 `deploy/k8s/app.yaml` 的两处 `image` 到刚推送的标签或镜像摘要。私有仓库需要在部署命名空间创建镜像拉取 Secret，并为两个 Deployment 的 `spec.template.spec.imagePullSecrets` 引用它，或使用集群已经配置的节点级凭证。
+根据节点架构选择 `linux/amd64` 或 `linux/arm64`。将 `deploy/k8s/app.yaml` 两处 `image` 换成构建结果。启用 Skill 时也要把 `deploy/k8s/skill-worker.example.yaml` 的镜像改成同版本后端镜像。私有镜像仓库使用集群节点凭据，或在同命名空间创建并从 `spec.template.spec.imagePullSecrets` 引用拉取 Secret。
 
-### 创建配置并部署
+### 应用配置和 Deployment
 
 ```bash
 kubectl create namespace agentplaza
@@ -103,13 +114,24 @@ kubectl -n agentplaza rollout status deployment/agentplaza-backend --timeout=180
 kubectl -n agentplaza rollout status deployment/agentplaza-frontend --timeout=180s
 ```
 
-`MONGODB_URI` 和 `REDIS_URL` 填客户实际连接地址。URI 用户名和密码中的特殊字符需做百分号编码，启用 Redis TLS 时使用 `rediss://`。如果启用了网络策略，允许 Pod 访问集群 DNS、MongoDB、Redis、身份服务和已启用的外部集成，并允许前端访问 `backend:3000`。把生产密钥保存在客户的密钥管理系统，并限制 Kubernetes Secret 的读取权限。上面的环境文件可作为首次创建 Secret 的输入。
+如启用 Skill，先设置 `SKILL_ENABLED=true` 和 OSS，再执行：
 
-启用可选浏览器配置时，编辑 `app.yaml` 中的 `agentplaza-frontend-config`。更新 Secret 或 ConfigMap 后，执行对应的 `kubectl -n agentplaza rollout restart deployment/agentplaza-backend` 或 `kubectl -n agentplaza rollout restart deployment/agentplaza-frontend`，使 Pod 读取更新后的环境变量或配置文件。
+```bash
+kubectl -n agentplaza apply -f deploy/k8s/skill-worker.example.yaml
+kubectl -n agentplaza rollout status deployment/agentplaza-skill-worker --timeout=180s
+```
 
-### 配置入口并验收
+MongoDB 和 Redis 通过现有服务接入，MongoDB、Redis、OSS 的持久化由各服务管理。工作负载的 `/tmp` 使用临时存储。更新 Secret 后重启后端和已启用的 Worker，更新公开浏览器配置时编辑 `app.yaml` 的 `agentplaza-frontend-config` 后重新应用并重启前端。挂载为子路径的 ConfigMap 文件由新 Pod 读入。
 
-将 `deploy/k8s/ingress.example.yaml` 中的 Ingress Class、两个域名值、证书 Secret 名称改成实际值。如果证书由客户提供，可预先创建 TLS Secret。已有证书管理器可以按客户流程生成相同名称的 Secret。
+```bash
+kubectl -n agentplaza rollout restart deployment/agentplaza-backend
+# 如已部署 Worker
+kubectl -n agentplaza rollout restart deployment/agentplaza-skill-worker
+```
+
+### 安装入口及验证
+
+将 `deploy/k8s/ingress.example.yaml` 中的 Ingress Class、域名和证书 Secret 名称换成客户值，证书由客户或证书管理器颁发。
 
 ```bash
 kubectl -n agentplaza create secret tls agentplaza-tls --cert=fullchain.pem --key=privkey.pem
@@ -118,38 +140,27 @@ kubectl -n agentplaza get pods,svc,ingress
 curl -fsS https://plaza.example.com/api/ready
 ```
 
-验证 DNS 已指向入口地址，同时核对 HTTPS 地址、`FRONTEND_URL`、`OAUTH_REDIRECT_URI` 与身份服务登记一致。只做本地连通验证时，可不应用 Ingress，执行以下命令并打开第二个终端。
+测试集群也可以先执行 `kubectl -n agentplaza port-forward svc/agentplaza-frontend 8080:80`，再在另一个终端访问 `http://127.0.0.1:8080` 验证页面和探针。测试登录也要登记对应的完整回调地址，并将前端 origin 同步为浏览器实际访问地址。
 
-```bash
-kubectl -n agentplaza port-forward svc/agentplaza-frontend 8080:80
-```
+## 4. 功能验收、更新与回滚
 
-```bash
-curl -fsS http://localhost:8080/healthz
-curl -fsS http://localhost:8080/api/health
-curl -fsS http://localhost:8080/api/ready
-```
-
-## 应用环境变量
-
-| 配置 | 用途 |
+| 验收项 | 成功信号 |
 | --- | --- |
-| `FRONTEND_URL` | 浏览器使用的站点 origin，如 `https://plaza.example.com`。 |
-| `OAUTH_HOST`、`OAUTH_CLIENT_ID`、`OAUTH_CLIENT_SECRET`、`OAUTH_REDIRECT_URI` | IdTrust 兼容服务地址、客户端 ID、密钥、完整回调 URI。回调走站点根路径并包含末尾 `/`。 |
-| `MONGODB_URI`、`REDIS_URL` | MongoDB 和 Redis 连接地址。Compose 自动生成，Kubernetes 由客户填写。 |
-| `ADMIN_BADGES` | 可选管理员身份标识，逗号分隔。按身份服务返回的工号填写。 |
-| `FASTGPT_FRONTEND_BASE_URL`、`FASTGPT_DEFAULT_API_BASE_URL` | 可选 FastGPT 浏览器入口和默认服务端 API 地址。配置前先开通客户 FastGPT 和对应应用凭据。 |
-| `HIGRESS_CONSOLE_BASE_URL`、`HIGRESS_GATEWAY_BASE_URL` | 可选 Higress 控制台与数据面网关地址。两者及加密密钥均配置后启用 MCP 集成，具有管理员权限的用户可以发布和操作服务。配置控制台令牌 `HIGRESS_CONSOLE_BEARER_TOKEN`，或 `HIGRESS_CONSOLE_USERNAME` 和 `HIGRESS_CONSOLE_PASSWORD`。 |
-| `WECOM_BOT_SECRET_ENCRYPTION_KEY` | 保存 MCP 或企业微信机器人等集成凭据时使用的加密密钥。可由 `openssl rand -hex 32` 生成，所有后端副本共用一份并备份。 |
-| `VITE_FASTGPT_FRONTEND_BASE_URL`、`VITE_MCP_GATEWAY_BASE_URL` | 可选浏览器地址，配置在公开的 `config.js`，可与后端网络中的服务地址不同。 |
+| 前端、后端、数据服务 | `/healthz`、`/api/health`、`/api/ready` 返回 200。 |
+| 身份源 | 两个身份账号都能登录，管理员能进入对应管理页。 |
+| FastGPT | 已有测试应用出现在符合原有可见性规则的目录中，点开能到客户 FastGPT。 |
+| MCP | 管理员发布测试服务，目录可见，使用 MCP 客户端连接客户网关并调用测试工具。 |
+| Skill | 测试 ZIP 进入审阅流程，批准发布后能搜索和下载。 |
+| 基础操作 | 确认数据备份任务、日志可见、监控基础设施、密钥轮换操作和访问规则符合客户要求。 |
 
-配置 `WECOM_BOT_WORKER_ENABLED=true` 和凭据加密密钥后启用企业微信机器人。客户需在企业微信开通支持长连接的机器人并获得机器人 ID 和密钥，按需配置 FastGPT。需要接收媒体时，配置 `WECOM_BOT_MEDIA_UPLOAD_URL` 和 `WECOM_BOT_MEDIA_ALLOWED_HOSTS`，可按需填写 `WECOM_BOT_MEDIA_PUBLIC_BASE_URL`、`WECOM_BOT_MEDIA_UPLOAD_RESPONSE_HOSTS` 和 `WECOM_BOT_MEDIA_BUCKET_NAME`。链接应用需要上传图片或文件时，配置兼容上传接口 `MINIO_UPLOAD_URL`，如需指定存储桶，填写 `MINIO_BUCKET`。部署环境需允许后台访问已启用的外部服务。只使用基础广场功能时可留空第三方集成配置。
+更新前记录镜像标签和 Git 版本，备份共享 MongoDB 以及现有 Skill 桶中的对象。Compose 更新使用原 `-f`／`--profile` 参数运行 `up -d --build --wait`；Kubernetes 用新镜像更新相关 Deployment，再检查 rollout。上线优先在与生产隔离的 FastGPT 数据副本和存储桶验证。回滚需同时恢复配套代码、配置和镜像，并根据数据迁移情况决定是否恢复数据库及对象。
 
-## 验收和排查
+### 从旧版 Compose 独立数据库升级
 
-1. 检查 `/healthz`、`/api/health`、`/api/ready` 返回 200。`/api/ready` 检查 MongoDB 和 Redis，返回 503 时先核对数据库地址、权限、网络和证书。
-2. 在浏览器打开站点，用普通账号登录，验证广场页面和应用列表能加载。新部署数据库初次使用时列表可能为空。用管理员账号验证管理权限，创建或发布一条可公开的测试应用，再用普通账号确认可见性符合配置。
-3. 已启用的 FastGPT、Higress、企业微信集成逐项进行一次实际调用。检查使用的 API 地址和授权为客户环境。
-4. Compose 诊断用 `docker compose ps` 和 `docker compose logs --tail=100 backend frontend mongo redis`。Kubernetes 诊断用 `kubectl -n agentplaza describe pod <pod>` 和 `kubectl -n agentplaza logs deployment/agentplaza-backend --tail=100`。遇到登录回调失败时检查站点 HTTPS 地址、完整回调 URI、浏览器时钟和身份配置，分享日志前去掉账号、凭据、连接串和回调查询参数。
+早期客户版的 Compose 文件会创建独立 MongoDB 和数据卷。升级前先用原版本的部署配置确认数据卷与数据库名称，备份原卷中的 Agent Plaza 数据，并记录原有前后端版本和连接配置。新版本启动时连接 FastGPT 主库，旧库里的链接应用、收藏及管理数据不会自动出现在新库。
 
-参考 [Docker Compose 启动顺序](https://docs.docker.com/compose/how-tos/startup-order/) 和 [Kubernetes 探针说明](https://kubernetes.io/docs/concepts/workloads/pods/probes/)。
+如果旧独立库里已有需要保留的数据，由 MongoDB 管理员对比两边的集合、对象 ID、唯一索引和身份标识，在测试库验证逐集合导出及合并策略。迁移前备份 FastGPT 主库，先在测试环境确认应用权限和关联数据，再进行生产切换。避免覆盖 FastGPT 的应用、用户、团队或权限集合。确认迁移和回滚窗口结束后再清理原 MongoDB 容器或数据卷。
+
+诊断时可使用 `docker compose logs --tail=100 backend frontend redis`、`docker compose --profile skills logs --tail=100 skill-worker`，或 `kubectl -n agentplaza logs deployment/agentplaza-backend --tail=100`。对外分享前去除连接串、账号标识、凭据及回调查询。`/api/ready` 仅检查核心 MongoDB 和 Redis，FastGPT UI、Higress、OSS 各自按接入手册验收。
+
+外部参考 [Docker Compose 配置](https://docs.docker.com/reference/compose-file/services/) · [Kubernetes Service](https://kubernetes.io/docs/concepts/services-networking/service/)。
